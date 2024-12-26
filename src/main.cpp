@@ -8,9 +8,11 @@
 #include <filesystem>
 #include <optional>
 #include <ranges>
+#include <fstream>
 
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 using namespace std::literals::string_view_literals;
 using namespace std::literals::string_view_literals;
@@ -129,6 +131,7 @@ struct Shell {
     void loop() {
         while (true) {
             this->print_prompt();
+            std::unordered_map<int, int> redirected_files;
 
             std::string input;
             if (std::getline(std::cin, input).eof()) break;
@@ -137,6 +140,19 @@ struct Shell {
             if (args.empty()) continue;
 
             const auto& command = args[0];
+
+            for (int i = 1; i < args.size(); ++i) {
+                if (args[i] == ">"sv || args[i] == "1>"sv) {
+                    // save actual stdout somewhere else
+                    int temp = dup(STDOUT_FILENO);
+                    int fd = open(args[i + 1].c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+                    dup2(fd, STDOUT_FILENO);
+
+                    redirected_files[STDOUT_FILENO] = temp;
+                    args.erase(args.begin() + i, args.end());
+                    break;
+                }
+            }
 
             if (auto it = this->builtin_cmds.find(std::string_view(command)); it != this->builtin_cmds.end()) {
                 it->second(this, args);
@@ -155,6 +171,12 @@ struct Shell {
                 wait(nullptr);
             } else {
                 std::cout << input << ": command not found\n";
+            }
+
+            for (auto [replaced, temp] : redirected_files) {
+                close(replaced);
+                dup2(temp, replaced);
+                close(temp);
             }
         }
     }
