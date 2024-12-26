@@ -57,9 +57,23 @@ struct Shell {
                 if (std::isspace(ch)) {
                     break;
                 } else if (ch == '"') {
-                    ch = get_char();
-                    for (; !input.empty() && ch != '"'; ch = get_char()) {
-                        arg.push_back(ch);
+                    for (ch = get_char(); !input.empty() && ch != '"'; ch = get_char()) {
+                        if (ch == '\\') {
+                            auto next = get_char();
+                            switch (next) {
+                                default:
+                                    arg.push_back(ch);
+                                    [[gnu::fallthrough]];
+                                case '"':
+                                case '$':
+                                case '`':
+                                case '\\':
+                                case '\n':
+                                    arg.push_back(next);
+                            }
+                        } else {
+                            arg.push_back(ch);
+                        }
                     }
                 } else if (ch == '\'') {
                     auto end = input.find_first_of('\'');
