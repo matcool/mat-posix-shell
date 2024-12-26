@@ -18,7 +18,7 @@ using namespace std::literals::string_view_literals;
 using namespace std::literals::string_view_literals;
 
 struct RawArg {
-    std::string arg;
+    std::string text;
     bool raw = false;
 };
 
@@ -103,7 +103,7 @@ struct Shell {
                 }
             }
             args.emplace_back(RawArg {
-                .arg = std::move(arg),
+                .text = std::move(arg),
                 .raw = raw,
             });
         }
@@ -151,33 +151,29 @@ struct Shell {
             auto raw_args = this->parse_input(input);
             if (raw_args.empty()) continue;
 
-            const auto& command = raw_args[0].arg;
+            const auto& command = raw_args[0].text;
             CmdArgs args;
-            args.push_back(command);
 
             bool add_args = true;
-            for (int i = 1; i < raw_args.size(); ++i) {
+            for (int i = 0; i < raw_args.size(); ++i) {
                 const auto& arg = raw_args[i];
-                if (arg.raw && (arg.arg == ">"sv || arg.arg == "1>"sv)) {
-                    // save actual stdout somewhere else
-                    int temp = dup(STDOUT_FILENO);
-                    int fd = open(raw_args.at(i + 1).arg.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-                    dup2(fd, STDOUT_FILENO);
+                if (arg.raw && (
+                    arg.text == ">"sv || arg.text == "1>"sv || arg.text == "2>"sv
+                    || arg.text == ">>"sv || arg.text == "1>>"sv || arg.text == "2>>"sv)
+                ) {
+                    int target_fd = (arg.text[0] == '>' || arg.text[0] == '1') ? STDOUT_FILENO : STDERR_FILENO;
+                    int flag = arg.text.ends_with(">>"sv) ? O_APPEND : O_TRUNC;
 
-                    redirected_files[STDOUT_FILENO] = temp;
-                    i++;
-                    add_args = false;
-                } else if (arg.raw && arg.arg == "2>"sv) {
-                    // save actual stderr somewhere else
-                    int temp = dup(STDERR_FILENO);
-                    int fd = open(raw_args.at(i + 1).arg.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-                    dup2(fd, STDERR_FILENO);
+                    int temp = dup(target_fd);
+                    int fd = open(raw_args.at(i + 1).text.c_str(), O_CREAT | O_RDWR | flag, 0b110'100'100);
+                    dup2(fd, target_fd);
 
-                    redirected_files[STDERR_FILENO] = temp;
+                    redirected_files[target_fd] = temp;
+
                     i++;
                     add_args = false;
                 } else if (add_args) {
-                    args.emplace_back(std::move(arg.arg));
+                    args.emplace_back(std::move(arg.text));
                 }
             }
 
