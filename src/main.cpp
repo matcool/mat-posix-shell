@@ -69,6 +69,10 @@ struct Shell {
                     } else {
                         input = {};
                     }
+                } else if (ch == '\\') {
+                    // take next character as is, no special processing
+                    ch = get_char();
+                    arg.push_back(ch);
                 } else {
                     arg.push_back(ch);
                 }
