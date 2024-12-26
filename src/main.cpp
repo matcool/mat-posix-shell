@@ -20,7 +20,6 @@ struct Shell {
     using CmdHandler = std::function<void(Shell*, const CmdArgs&)>;
 
     std::unordered_map<std::string_view, CmdHandler> builtin_cmds;
-    std::filesystem::path current_path;
 
     Shell() {
         #define BUILTIN(name) { #name, [](Shell* shell, const CmdArgs& args) { shell->handle_builtin_##name(args); } }
@@ -29,10 +28,9 @@ struct Shell {
             BUILTIN(echo),
             BUILTIN(type),
             BUILTIN(pwd),
+            BUILTIN(cd),
         };
         #undef BUILTIN
-
-        current_path = std::filesystem::current_path();
     }
 
     void print_prompt() {
@@ -133,8 +131,17 @@ private:
         }
     }
 
-    void handle_builtin_pwd(const CmdArgs& args) {
-        std::cout << this->current_path.string() << "\n";
+    void handle_builtin_pwd(const CmdArgs&) {
+        std::cout << std::filesystem::current_path().string() << "\n";
+    }
+
+    void handle_builtin_cd(const CmdArgs& args) {
+        std::filesystem::path new_path = args.at(1);
+        if (!std::filesystem::is_directory(new_path)) {
+            std::cout << "cd: " << args.at(1) << ": No such file or directory\n";
+        } else {
+            std::filesystem::current_path(new_path);
+        }
     }
 };
 
