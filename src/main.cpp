@@ -40,20 +40,34 @@ struct Shell {
     CmdArgs parse_input(std::string_view input) const {
         std::vector<std::string> args;
 
-        while (true) {
+        auto get_char = [&] {
+            char c = input[0];
+            input.remove_prefix(1);
+            return c;
+        };
+
+        while (!input.empty()) {
             auto i = input.find_first_not_of(' ');
             if (i == -1) break;
             input.remove_prefix(i);
-            auto end = input.find_first_of(' ');
 
-            auto arg = input.substr(0, end);
-            args.emplace_back(arg);
-
-            if (end != -1) {
-                input.remove_prefix(end);
-            } else {
-                break;
+            std::string arg;
+            while (!input.empty()) {
+                char ch = get_char();
+                if (std::isspace(ch)) break;
+                if (ch == '\'') {
+                    auto end = input.find_first_of('\'');
+                    arg += input.substr(0, end);
+                    if (end != -1) {
+                        input.remove_prefix(end + 1);
+                    } else {
+                        input = {};
+                    }
+                } else {
+                    arg.push_back(ch);
+                }
             }
+            args.emplace_back(std::move(arg));
         }
 
         return args;
