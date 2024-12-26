@@ -5,6 +5,9 @@
 #include <functional>
 #include <unordered_map>
 #include <utility>
+#include <filesystem>
+#include <optional>
+#include <ranges>
 
 using namespace std::literals::string_view_literals;
 using namespace std::literals::string_view_literals;
@@ -51,6 +54,20 @@ struct Shell {
         return args;
     }
 
+    std::optional<std::filesystem::path> search_path(std::string_view name) {
+        std::string_view path = std::getenv("PATH");
+        if (path.empty()) return std::nullopt;
+
+        for (const auto part : std::views::split(path, ':')) {
+            auto full_path = std::filesystem::path(std::string_view(part)) / name;
+            if (std::filesystem::exists(full_path)) {
+                return full_path;
+            }
+        }
+
+        return std::nullopt;
+    }
+
     void loop() {
         while (true) {
             this->print_prompt();
@@ -89,6 +106,8 @@ private:
         auto it = this->builtin_cmds.find(cmd);
         if (it != this->builtin_cmds.end()) {
             std::cout << cmd << " is a shell builtin\n";
+        } else if (auto opt = this->search_path(cmd); opt.has_value()) {
+            std::cout << cmd << " is " << (*opt).string() << "\n";
         } else {
             std::cout << cmd << ": not found\n";
         }
