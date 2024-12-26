@@ -89,10 +89,11 @@ struct Shell {
                 auto path = std::move(opt.value());
 
                 if (fork() == 0) {
-                    auto unix_args =
+                    auto range =
                         std::ranges::ref_view(args)
                         | std::views::transform([](const auto& str) { return str.c_str(); })
-                        | std::ranges::to<std::vector>();
+                        | std::views::common;
+                    std::vector unix_args(range.begin(), range.end());
                     unix_args.push_back(nullptr);
                     execv(path.c_str(), const_cast<char* const*>(unix_args.data()));
                 }
