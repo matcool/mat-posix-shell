@@ -17,6 +17,11 @@
 using namespace std::literals::string_view_literals;
 using namespace std::literals::string_view_literals;
 
+struct RawArg {
+    std::string arg;
+    bool raw = false;
+};
+
 struct Shell {
     using CmdArgs = std::vector<std::string>;
     using CmdHandler = std::function<void(Shell*, const CmdArgs&)>;
@@ -39,8 +44,8 @@ struct Shell {
         std::cout << "$ ";
     }
 
-    CmdArgs parse_input(std::string_view input) const {
-        std::vector<std::string> args;
+    std::vector<RawArg> parse_input(std::string_view input) const {
+        std::vector<RawArg> args;
 
         auto get_char = [&] {
             char c = input[0];
@@ -54,11 +59,13 @@ struct Shell {
             input.remove_prefix(i);
 
             std::string arg;
+            bool raw = true;
             while (!input.empty()) {
                 char ch = get_char();
                 if (std::isspace(ch)) {
                     break;
                 } else if (ch == '"') {
+                    raw = false;
                     for (ch = get_char(); !input.empty() && ch != '"'; ch = get_char()) {
                         if (ch == '\\') {
                             auto next = get_char();
@@ -78,6 +85,7 @@ struct Shell {
                         }
                     }
                 } else if (ch == '\'') {
+                    raw = false;
                     auto end = input.find_first_of('\'');
                     arg += input.substr(0, end);
                     if (end != -1) {
@@ -86,6 +94,7 @@ struct Shell {
                         input = {};
                     }
                 } else if (ch == '\\') {
+                    raw = false;
                     // take next character as is, no special processing
                     ch = get_char();
                     arg.push_back(ch);
@@ -93,7 +102,10 @@ struct Shell {
                     arg.push_back(ch);
                 }
             }
-            args.emplace_back(std::move(arg));
+            args.emplace_back(RawArg {
+                .arg = std::move(arg),
+                .raw = raw,
+            });
         }
 
         return args;
@@ -136,21 +148,36 @@ struct Shell {
             std::string input;
             if (std::getline(std::cin, input).eof()) break;
 
-            auto args = this->parse_input(input);
-            if (args.empty()) continue;
+            auto raw_args = this->parse_input(input);
+            if (raw_args.empty()) continue;
 
-            const auto& command = args[0];
+            const auto& command = raw_args[0].arg;
+            CmdArgs args;
+            args.push_back(command);
 
-            for (int i = 1; i < args.size(); ++i) {
-                if (args[i] == ">"sv || args[i] == "1>"sv) {
+            bool add_args = true;
+            for (int i = 1; i < raw_args.size(); ++i) {
+                const auto& arg = raw_args[i];
+                if (arg.raw && (arg.arg == ">"sv || arg.arg == "1>"sv)) {
                     // save actual stdout somewhere else
                     int temp = dup(STDOUT_FILENO);
-                    int fd = open(args[i + 1].c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+                    int fd = open(raw_args.at(i + 1).arg.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
                     dup2(fd, STDOUT_FILENO);
 
                     redirected_files[STDOUT_FILENO] = temp;
-                    args.erase(args.begin() + i, args.end());
-                    break;
+                    i++;
+                    add_args = false;
+                } else if (arg.raw && arg.arg == "2>"sv) {
+                    // save actual stderr somewhere else
+                    int temp = dup(STDERR_FILENO);
+                    int fd = open(raw_args.at(i + 1).arg.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+                    dup2(fd, STDERR_FILENO);
+
+                    redirected_files[STDERR_FILENO] = temp;
+                    i++;
+                    add_args = false;
+                } else if (add_args) {
+                    args.emplace_back(std::move(arg.arg));
                 }
             }
 
@@ -170,7 +197,7 @@ struct Shell {
                 }
                 wait(nullptr);
             } else {
-                std::cout << input << ": command not found\n";
+                std::cerr << command << ": command not found\n";
             }
 
             for (auto [replaced, temp] : redirected_files) {
@@ -202,7 +229,7 @@ private:
         } else if (auto opt = this->search_path(cmd); opt.has_value()) {
             std::cout << cmd << " is " << (*opt).string() << "\n";
         } else {
-            std::cout << cmd << ": not found\n";
+            std::cerr << cmd << ": not found\n";
         }
     }
 
@@ -213,7 +240,7 @@ private:
     void handle_builtin_cd(const CmdArgs& args) {
         std::filesystem::path new_path = this->expand_path(args.at(1));
         if (!std::filesystem::is_directory(new_path)) {
-            std::cout << "cd: " << new_path.string() << ": No such file or directory\n";
+            std::cerr << "cd: " << new_path.string() << ": No such file or directory\n";
         } else {
             std::filesystem::current_path(new_path);
         }
