@@ -54,8 +54,14 @@ struct Shell {
             std::string arg;
             while (!input.empty()) {
                 char ch = get_char();
-                if (std::isspace(ch)) break;
-                if (ch == '\'') {
+                if (std::isspace(ch)) {
+                    break;
+                } else if (ch == '"') {
+                    ch = get_char();
+                    for (; !input.empty() && ch != '"'; ch = get_char()) {
+                        arg.push_back(ch);
+                    }
+                } else if (ch == '\'') {
                     auto end = input.find_first_of('\'');
                     arg += input.substr(0, end);
                     if (end != -1) {
