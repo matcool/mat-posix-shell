@@ -73,6 +73,21 @@ struct Shell {
         return std::nullopt;
     }
 
+    // Turns ~ into the home dir
+    std::filesystem::path expand_path(std::filesystem::path const& orig) {
+        std::string_view home = std::getenv("HOME");
+        std::filesystem::path output;
+        bool first = true;
+        for (auto part : orig) {
+            if (first && part == "~"sv) {
+                part = home;
+            }
+            first = false;
+            output /= part;
+        }
+        return output;
+    }
+
     void loop() {
         while (true) {
             this->print_prompt();
@@ -136,9 +151,9 @@ private:
     }
 
     void handle_builtin_cd(const CmdArgs& args) {
-        std::filesystem::path new_path = args.at(1);
+        std::filesystem::path new_path = this->expand_path(args.at(1));
         if (!std::filesystem::is_directory(new_path)) {
-            std::cout << "cd: " << args.at(1) << ": No such file or directory\n";
+            std::cout << "cd: " << new_path.string() << ": No such file or directory\n";
         } else {
             std::filesystem::current_path(new_path);
         }
