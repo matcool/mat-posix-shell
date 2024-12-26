@@ -9,6 +9,9 @@
 #include <optional>
 #include <ranges>
 
+#include <sys/wait.h>
+#include <unistd.h>
+
 using namespace std::literals::string_view_literals;
 using namespace std::literals::string_view_literals;
 
@@ -40,7 +43,7 @@ struct Shell {
             if (i == -1) break;
             input.remove_prefix(i);
             auto end = input.find_first_of(' ');
-            
+
             auto arg = input.substr(0, end);
             args.emplace_back(arg);
 
@@ -82,6 +85,18 @@ struct Shell {
 
             if (auto it = this->builtin_cmds.find(std::string_view(command)); it != this->builtin_cmds.end()) {
                 it->second(this, args);
+            } else if (auto opt = this->search_path(command); opt) {
+                auto path = std::move(opt.value());
+
+                if (fork() == 0) {
+                    auto unix_args =
+                        std::ranges::ref_view(args)
+                        | std::views::transform([](const auto& str) { return str.c_str(); })
+                        | std::ranges::to<std::vector>();
+                    unix_args.push_back(nullptr);
+                    execv(path.c_str(), const_cast<char* const*>(unix_args.data()));
+                }
+                wait(nullptr);
             } else {
                 std::cout << input << ": command not found\n";
             }
